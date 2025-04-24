@@ -1,12 +1,12 @@
-# Importing necessary libraries
+import os
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 import seaborn as sns
+import matplotlib.pyplot as plt
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, confusion_matrix
+from imblearn.over_sampling import SMOTE
+
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
@@ -14,65 +14,79 @@ from sklearn.svm import SVC
 from sklearn.naive_bayes import GaussianNB
 from sklearn.ensemble import RandomForestClassifier
 
-from imblearn.over_sampling import SMOTE
+from sklearn.metrics import accuracy_score
 
-# Load dataset
-df = pd.read_csv("Data/heart.csv")
+# 1. Load the data
+df = pd.read_csv("heart.csv")
 
-# Drop unnecessary columns
-df = df.drop(columns=["id", "dataset"], errors="ignore")
+# 2. Drop irrelevant columns
+df = df.drop(columns=["id", "dataset"])
 
-# One-hot encode categorical features
-categorical_cols = ['sex', 'cp', 'fbs', 'restecg', 'exang', 'slope', 'thal']
-df = pd.get_dummies(df, columns=categorical_cols)
+# 3. One-hot encode all categorical columns
+df = pd.get_dummies(df, drop_first=True)
 
-# Drop missing values
+# 4. Drop any remaining missing values
 df = df.dropna()
 
-# Features and target
-X = df.drop(columns=['num'])
-y = df['num']
+# 5. Separate features and target
+X = df.drop("num", axis=1)
+y = df["num"]
 
-# Apply SMOTE to balance classes
+# 6. Create folders for train/test splits and results
+os.makedirs("Data/Train_Test", exist_ok=True)
+os.makedirs("Data/Result", exist_ok=True)
+
+# 7. Split into train/test (80/20) with stratification
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+
+# 8. Save the splits
+X_train.to_csv("Data/Train_Test/X_train.csv", index=False)
+y_train.to_frame(name="num").to_csv("Data/Train_Test/y_train.csv", index=False)
+X_test.to_csv("Data/Train_Test/X_test.csv", index=False)
+y_test.to_frame(name="num").to_csv("Data/Train_Test/y_test.csv", index=False)
+
+# 9. Balance the training set with SMOTE
 smote = SMOTE(random_state=42)
-X_resampled, y_resampled = smote.fit_resample(X, y)
+X_res, y_res = smote.fit_resample(X_train, y_train)
 
-# Standardize features
+# 10. Standardize features
 scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X_resampled)
+X_res_scaled = scaler.fit_transform(X_res)
+X_test_scaled = scaler.transform(X_test)
 
-# Split data
-X_train, X_test, y_train, y_test = train_test_split(X_scaled, y_resampled, test_size=0.2, random_state=42, stratify=y_resampled)
-
-# Initialize models
+# 11. Define the models
 models = {
-    "Logistic Regression": LogisticRegression(max_iter=1000),
-    "K-Nearest Neighbors": KNeighborsClassifier(n_neighbors=5),
-    "Decision Tree": DecisionTreeClassifier(),
-    "Support Vector Machine": SVC(),
-    "Naive Bayes": GaussianNB(),
-    "Random Forest": RandomForestClassifier()
+    "LogisticRegression": LogisticRegression(max_iter=1000, random_state=42),
+    "KNN": KNeighborsClassifier(n_neighbors=5),
+    "DecisionTree": DecisionTreeClassifier(random_state=42),
+    "SVM": SVC(random_state=42),
+    "NaiveBayes": GaussianNB(),
+    "RandomForest": RandomForestClassifier(n_estimators=100, random_state=42)
 }
 
-# Train and evaluate
-results = {}
-predictions = {}
+# 12. Train, predict, save results, and collect accuracies
+results = []
+for name, clf in models.items():
+    clf.fit(X_res_scaled, y_res)
+    y_pred = clf.predict(X_test_scaled)
+    # Save predictions
+    pd.DataFrame({"num_pred": y_pred}).to_csv(f"Data/Result/predictions_{name}.csv", index=False)
+    # Record accuracy
+    acc = accuracy_score(y_test, y_pred)
+    results.append((name, acc))
 
-for name, model in models.items():
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
-    accuracy = accuracy_score(y_test, y_pred)
-    results[name] = accuracy
-    predictions[name] = y_pred
-
-# Results DataFrame
-results_df = pd.DataFrame(list(results.items()), columns=["Model", "Accuracy"])
+# 13. Create a DataFrame of results and plot
+results_df = pd.DataFrame(results, columns=["Model", "Accuracy"])
 print(results_df)
 
-# Plot accuracies
-sns.barplot(x="Accuracy", y="Model", data=results_df)
+plt.figure(figsize=(10,6))
+sns.barplot(x="Model", y="Accuracy", data=results_df, palette="viridis")
+plt.ylim(0, 1)
 plt.title("Model Accuracies")
-plt.xlabel("Accuracy")
-plt.ylabel("Model")
+plt.ylabel("Accuracy")
+plt.xlabel("Model")
+plt.xticks(rotation=45)
 plt.tight_layout()
 plt.show()
