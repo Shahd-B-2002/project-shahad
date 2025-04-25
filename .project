@@ -1,92 +1,121 @@
-import os
+# Import libraries
 import pandas as pd
-import seaborn as sns
+import numpy as np
 import matplotlib.pyplot as plt
-
-from sklearn.model_selection import train_test_split
+import seaborn as sns
+from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.preprocessing import StandardScaler
-from imblearn.over_sampling import SMOTE
-
 from sklearn.linear_model import LogisticRegression
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.svm import SVC
-from sklearn.naive_bayes import GaussianNB
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 
-from sklearn.metrics import accuracy_score
+# Load the dataset
+data = pd.read_csv('heart.csv')
 
-# 1. Load the data
-df = pd.read_csv("heart.csv")
+# Check for missing values
+print("Missing values in each column:")
+print(data.isnull().sum())
 
-# 2. Drop irrelevant columns
-df = df.drop(columns=["id", "dataset"])
+# If there are missing values, you can handle them:
+# Example: Filling missing values with the median of the column (if any)
+# data.fillna(data.median(), inplace=True)
 
-# 3. One-hot encode all categorical columns
-df = pd.get_dummies(df, drop_first=True)
+# 1. Data Overview (first few rows)
+print("Data Overview:")
+print(data.head())
 
-# 4. Drop any remaining missing values
-df = df.dropna()
+# 2. Data Summary Statistics
+print("Data Summary Statistics:")
+print(data.describe())
 
-# 5. Separate features and target
-X = df.drop("num", axis=1)
-y = df["num"]
+# 3. Distribution of Heart Disease Cases (target)
+plt.figure(figsize=(6, 4))
+sns.countplot(x='target', data=data, palette='Set2')
+plt.title('Distribution of Heart Disease (0 = No, 1 = Yes)')
+plt.xlabel('Heart Disease')
+plt.ylabel('Count')
+plt.show()
 
-# 6. Create folders for train/test splits and results
-os.makedirs("Data/Train_Test", exist_ok=True)
-os.makedirs("Data/Result", exist_ok=True)
+# 4. Age Distribution of Heart Disease Patients and Non-Patients
+plt.figure(figsize=(8, 6))
+sns.histplot(data=data, x='age', hue='target', multiple="stack", kde=True, palette='coolwarm')
+plt.title('Age Distribution of Heart Disease vs No Disease')
+plt.xlabel('Age')
+plt.ylabel('Count')
+plt.show()
 
-# 7. Split into train/test (80/20) with stratification
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
-)
+# 5. Blood Pressure Distribution
+plt.figure(figsize=(8, 6))
+sns.histplot(data=data, x='trestbps', hue='target', multiple="stack", kde=True, palette='coolwarm')
+plt.title('Blood Pressure Distribution')
+plt.xlabel('Resting Blood Pressure (trestbps)')
+plt.ylabel('Count')
+plt.show()
 
-# 8. Save the splits
-X_train.to_csv("Data/Train_Test/X_train.csv", index=False)
-y_train.to_frame(name="num").to_csv("Data/Train_Test/y_train.csv", index=False)
-X_test.to_csv("Data/Train_Test/X_test.csv", index=False)
-y_test.to_frame(name="num").to_csv("Data/Train_Test/y_test.csv", index=False)
+# 6. Cholesterol Distribution
+plt.figure(figsize=(8, 6))
+sns.histplot(data=data, x='chol', hue='target', multiple="stack", kde=True, palette='coolwarm')
+plt.title('Cholesterol Distribution')
+plt.xlabel('Cholesterol (chol)')
+plt.ylabel('Count')
+plt.show()
 
-# 9. Balance the training set with SMOTE
-smote = SMOTE(random_state=42)
-X_res, y_res = smote.fit_resample(X_train, y_train)
+# 7. Age vs Cholesterol
+plt.figure(figsize=(8, 6))
+sns.scatterplot(x='age', y='chol', hue='target', data=data, palette='coolwarm')
+plt.title('Age vs Cholesterol')
+plt.xlabel('Age')
+plt.ylabel('Cholesterol')
+plt.show()
 
-# 10. Standardize features
+# 8. Age vs Blood Pressure
+plt.figure(figsize=(8, 6))
+sns.scatterplot(x='age', y='trestbps', hue='target', data=data, palette='coolwarm')
+plt.title('Age vs Blood Pressure')
+plt.xlabel('Age')
+plt.ylabel('Resting Blood Pressure')
+plt.show()
+
+# 9. Correlation Heatmap (Updated)
+plt.figure(figsize=(10, 8))
+sns.heatmap(data.corr(), annot=True, cmap='coolwarm', fmt='.2f', linewidths=0.5)
+plt.title('Correlation Heatmap')
+plt.show()
+
+# Preprocessing the Data
+
+# 10. Splitting data into features and target
+X = data.drop('target', axis=1)
+y = data['target']
+
+# 11. Splitting into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+# 12. Feature Scaling (Standardizing the features)
 scaler = StandardScaler()
-X_res_scaled = scaler.fit_transform(X_res)
+X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
-# 11. Define the models
-models = {
-    "LogisticRegression": LogisticRegression(max_iter=1000, random_state=42),
-    "KNN": KNeighborsClassifier(n_neighbors=5),
-    "DecisionTree": DecisionTreeClassifier(random_state=42),
-    "SVM": SVC(random_state=42),
-    "NaiveBayes": GaussianNB(),
-    "RandomForest": RandomForestClassifier(n_estimators=100, random_state=42)
-}
+# Model Building: Logistic Regression
+# 13. Building a Logistic Regression Model
+model = LogisticRegression(max_iter=1000)
+model.fit(X_train_scaled, y_train)
 
-# 12. Train, predict, save results, and collect accuracies
-results = []
-for name, clf in models.items():
-    clf.fit(X_res_scaled, y_res)
-    y_pred = clf.predict(X_test_scaled)
-    # Save predictions
-    pd.DataFrame({"num_pred": y_pred}).to_csv(f"Data/Result/predictions_{name}.csv", index=False)
-    # Record accuracy
-    acc = accuracy_score(y_test, y_pred)
-    results.append((name, acc))
+# 14. Predictions
+y_pred = model.predict(X_test_scaled)
 
-# 13. Create a DataFrame of results and plot
-results_df = pd.DataFrame(results, columns=["Model", "Accuracy"])
-print(results_df)
+# 15. Evaluating the Model
+print("Accuracy Score:", accuracy_score(y_test, y_pred))
+print("Confusion Matrix:")
+print(confusion_matrix(y_test, y_pred))
+print("Classification Report:")
+print(classification_report(y_test, y_pred))
 
-plt.figure(figsize=(10,6))
-sns.barplot(x="Model", y="Accuracy", data=results_df, palette="viridis")
-plt.ylim(0, 1)
-plt.title("Model Accuracies")
-plt.ylabel("Accuracy")
-plt.xlabel("Model")
-plt.xticks(rotation=45)
-plt.tight_layout()
-plt.show()
+# 16. Model Coefficients
+coef_df = pd.DataFrame(model.coef_[0], X.columns, columns=['Coefficient'])
+print(coef_df)
+
+# 17. Cross-validation (optional)
+cv_scores = cross_val_score(model, X_train_scaled, y_train, cv=5)
+print("Cross-validation Scores (Logistic Regression):", cv_scores)
+print("Average Cross-validation Score:", np.mean(cv_scores))
+
